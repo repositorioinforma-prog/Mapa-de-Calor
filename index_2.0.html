@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapas de Calor - Edição Especial</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+
+  <style>
+    :root{
+      --azul-claro:#87CEFA; --azul-medio:#1E90FF; --azul-escuro:#121958;
+      --laranja-claro:#FFDF9E; --laranja-medio:#FFA500; --laranja-escuro:#843C0C;
+      --vermelho:#bb0c0c; 
+      --vermelhao:#ff0000;
+      --laranja:#ff8c00;
+      --cinza:#808080;
+      --cinza-claro:#d3d3d3;
+    }
+    html,body{height:100%;margin:0;font-family:system-ui,Arial,sans-serif;}
+    .app{display:grid;grid-template-columns:460px 1fr;height:100%}
+    .panel{border-right:1px solid #eee;padding:14px 16px 16px;overflow:auto;background:#fff}
+    h1{font-size:18px;margin:0 0 12px} h2{font-size:14px;margin:16px 0 8px}
+    label{font-size:13px;display:block;margin:8px 0 6px} small{color:#666;font-size:12px}
+    input[type="file"],select,button,input[type="number"]{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid #ddd;background:#fff}
+    .btn-primary{background:var(--azul-medio);border-color:var(--azul-medio);color:#fff}
+    .btn-outline{background:#fff;color:#111;border-color:#ccc}
+    .inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+    #map{height:100%;width:100%;background:#e9e9e9}
+    .leaflet-tile{filter:grayscale(1) brightness(1) contrast(1)}
+
+    .manual-row{display:flex; flex-direction: column; gap:8px; padding:16px 0; border-bottom:1px dashed #eee}
+    .manual-header{display:flex; align-items: center; justify-content: space-between; gap: 10px;}
+    .manual-name{font-size:13px; font-weight: 600; color: #333; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+    .num{width:70px; text-align:center; border-radius:8px; border:1px solid #ddd; padding:6px 8px; font-weight:700; font-size:14px}
+    
+    .palette-container{display:flex; flex-direction: column; gap: 6px;}
+    .palette-label{font-size: 10px; text-transform: uppercase; color: #999; font-weight: 700; letter-spacing: 0.5px;}
+    .palette{display:flex; gap:6px; flex-wrap:wrap; align-items: center;}
+    
+    .chip{width:22px; height:22px; border-radius:6px; border:1px solid rgba(0,0,0,.15); cursor:pointer; transition:transform .1s, box-shadow .1s}
+    .chip:hover{transform:scale(1.1); box-shadow:0 1px 4px rgba(0,0,0,0.2)}
+    .chip.is-selected{outline:2px solid #000; outline-offset:2px; z-index: 1;}
+    
+    .custom-color-input {
+      width: 24px; height: 24px; padding: 0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; background: none;
+    }
+
+    .slider-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .pct, .px{width:70px;text-align:center;border-radius:8px;border:1px solid #ddd;padding:6px 8px}
+    .muted{color:#666;font-size:12px}
+    :focus-visible{outline:2px solid var(--azul-medio);outline-offset:3px}
+
+    .region-number-icon { cursor: move !important; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <h1>Mapas de Calor - Edição Especial</h1>
+
+    <h2>1) KMLs</h2>
+    <label>Importar KML (vários):</label>
+    <input id="kmlInput" type="file" accept=".kml" multiple />
+
+    <h2>2) Configurações Visuais</h2>
+    <div class="inline">
+      <label for="baseSelect" style="margin:0">Fundo:</label>
+      <select id="baseSelect">
+        <option value="osm">OSM (Padrão)</option>
+        <option value="esri">Satélite (Esri)</option>
+        <option value="none">Sem mapa</option>
+      </select>
+      <button id="btnToggleLabels" class="btn-outline">Ocultar números</button>
+    </div>
+
+    <div style="margin-top:10px">
+      <label style="margin:0 0 4px">Espessura das bordas (px)</label>
+      <div class="slider-row">
+        <input id="borderRange" type="range" min="0" max="10" step="0.5" value="2" />
+        <input id="borderNumber" class="px" type="number" min="0" max="10" step="0.5" value="2" />
+      </div>
+    </div>
+
+    <div style="margin-top:10px">
+      <label style="margin:0 0 4px">Opacidade das cores (%)</label>
+      <div class="slider-row">
+        <input id="opacityRange" type="range" min="0" max="100" value="60" />
+        <input id="opacityNumber" class="pct" type="number" min="0" max="100" value="60" />
+      </div>
+    </div>
+
+    <div style="margin-top:10px">
+      <label style="margin:0 0 4px">Tamanho dos números (px)</label>
+      <div class="slider-row">
+        <input id="fontRange" type="range" min="10" max="80" step="1" value="28" />
+        <input id="fontNumber" class="px" type="number" min="10" max="80" step="1" value="28" />
+      </div>
+    </div>
+
+    <h2>3) Pintura e Numeração</h2>
+    <div id="manualPanel" class="muted">Carregue KMLs para listar as malhas…</div>
+    <div class="inline" style="margin-top:12px">
+      <button id="btnClearPaint" class="btn-outline">Limpar pintura</button>
+    </div>
+
+    <h2>4) Exportação</h2>
+    <div class="inline">
+      <button id="btnExport" class="btn-primary">Exportar PNG</button>
+      <small id="expStatus"></small>
+    </div>
+  </aside>
+
+  <main id="map"></main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+
+<script type="module">
+import { kml as kmlToGeoJSON } from "https://unpkg.com/@tmcw/togeojson?module";
+
+/* ===== Paleta Reorganizada ===== */
+const PAL = {
+  azulClaro:getVar('--azul-claro'), azulMedio:getVar('--azul-medio'), azulEscuro:getVar('--azul-escuro'),
+  larClaro:getVar('--laranja-claro'), larMedio:getVar('--laranja-medio'), larEscuro:getVar('--laranja-escuro'),
+  vermelho:getVar('--vermelho'), vermelhao:getVar('--vermelhao'), laranja:getVar('--laranja'), cinza:getVar('--cinza'), cinzaClaro:getVar('--cinza-claro')
+};
+
+// Cores que você pediu para separar (Guia Especial)
+const PALETTE_SPECIFIC = [
+  {id:'azulClaro',hex:PAL.azulClaro,label:'Azul Claro'},
+  {id:'laranja',hex:PAL.laranja,label:'Laranja'},
+  {id:'vermelhao',hex:PAL.vermelhao,label:'Vermelhão'},
+  {id:'cinzaClaro',hex:PAL.cinzaClaro,label:'Cinza Claro'},
+];
+
+// Outras cores
+const PALETTE_STANDARD = [
+  {id:'azulEscuro',hex:PAL.azulEscuro,label:'Azul Escuro'},
+  {id:'azulMedio',hex:PAL.azulMedio,label:'Azul Médio'},
+  {id:'laranjaEscuro',hex:PAL.larEscuro,label:'Laranja Escuro'},
+  {id:'laranjaMedio',hex:PAL.larMedio,label:'Laranja Médio'},
+  {id:'laranjaClaro',hex:PAL.larClaro,label:'Laranja Claro'},
+  {id:'vermelho',hex:PAL.vermelho,label:'Vermelho'},
+  {id:'cinza',hex:PAL.cinza,label:'Cinza'},
+];
+
+function getVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+/* ===== Configuração Mapa ===== */
+const map = L.map('map', { zoomControl:true, preferCanvas:true }).setView([-15.78,-47.88], 11);
+const canvasRenderer = L.canvas({ padding:0.5 });
+
+const baseOSM  = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom:19, attribution:'© OpenStreetMap contributors', crossOrigin:'anonymous' });
+const baseEsri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom:19, attribution:'Tiles © Esri', crossOrigin:'anonymous' });
+
+let currentBase = baseOSM.addTo(map);
+let labelsVisible = true;
+
+const kmlGroup = L.layerGroup().addTo(map);
+const boundsGroup = L.featureGroup().addTo(map);
+
+const layersByKey = new Map();  
+const displayName = new Map();  
+const colorByKey  = new Map();  
+const numberByKey = new Map();  
+const labelByKey  = new Map();  
+const labelPositionByKey = new Map(); 
+const usedKeys    = new Set();
+
+let fillOpacityPct = 60;
+let numFontSize = 28;
+let borderWeight = 2;
+const numFontFamily = `"Aptos (Corpo)", "Aptos", Calibri, Arial, sans-serif`;
+
+const opacityRange  = el('opacityRange'), opacityNumber = el('opacityNumber');
+const fontRange     = el('fontRange'), fontNumber = el('fontNumber');
+const borderRange   = el('borderRange'), borderNumber = el('borderNumber');
+
+opacityRange.addEventListener('input', e=> setOpacityPct(Number(e.target.value)));
+opacityNumber.addEventListener('input', e=> setOpacityPct(Number(e.target.value)));
+fontRange.addEventListener('input', e=> setFontSize(Number(e.target.value)));
+fontNumber.addEventListener('input', e=> setFontSize(Number(e.target.value)));
+borderRange.addEventListener('input', e=> setBorderWeight(Number(e.target.value)));
+borderNumber.addEventListener('input', e=> setBorderWeight(Number(e.target.value)));
+
+function setOpacityPct(v){ fillOpacityPct = Math.max(0, Math.min(100, v)); opacityRange.value = opacityNumber.value = fillOpacityPct; repaintAll(); }
+function setFontSize(px){ numFontSize = Math.max(10, Math.min(80, px)); fontRange.value = fontNumber.value = numFontSize; numberByKey.forEach((_,k)=> updateLabel(k)); }
+function setBorderWeight(w){ borderWeight = Math.max(0, Math.min(10, w)); borderRange.value = borderNumber.value = borderWeight; repaintAll(); }
+
+const kmlInput=el('kmlInput'), manualPanel=el('manualPanel');
+const btnClear=el('btnClearPaint'), btnExport=el('btnExport');
+const baseSelect=el('baseSelect'), expStatus=el('expStatus'), btnToggleLabels=el('btnToggleLabels');
+
+kmlInput.addEventListener('change', async (e)=>{
+  resetAll();
+  for(const file of e.target.files){
+    if(!file.name.toLowerCase().endsWith('.kml')) continue;
+    const text=await file.text();
+    const dom=new DOMParser().parseFromString(text,'text/xml');
+    const gj=kmlToGeoJSON(dom);
+    const baseName=file.name.replace(/\.[A-Za-z0-9]+$/,'');
+    const key=uniqueKey(canon(baseName));
+    displayName.set(key, baseName);
+
+    const layer = L.geoJSON(gj, {
+      renderer: canvasRenderer,
+      style: defaultStyle,
+      onEachFeature: (f,ly)=>{
+        f.properties=f.properties||{}; f.properties.__fileKey=key;
+        ly.bindPopup(`<b>${escapeHtml(baseName)}</b>`); registerLayer(key, ly);
+      }
+    });
+    layer.addTo(kmlGroup); boundsGroup.addLayer(layer);
+  }
+  if(boundsGroup.getLayers().length){ try{ map.fitBounds(boundsGroup.getBounds(),{padding:[20,20]}); }catch{} }
+  rebuildManualUI();
+});
+
+baseSelect.addEventListener('change', ()=>{
+  if(currentBase) map.removeLayer(currentBase);
+  const val = baseSelect.value;
+  if(val==='esri') currentBase = baseEsri.addTo(map);
+  else if(val==='osm') currentBase = baseOSM.addTo(map);
+  else currentBase = null;
+});
+
+btnToggleLabels.addEventListener('click', ()=>{
+  labelsVisible = !labelsVisible;
+  btnToggleLabels.textContent = labelsVisible ? 'Ocultar números' : 'Mostrar números';
+  labelByKey.forEach(m=> labelsVisible ? m.addTo(map) : map.removeLayer(m));
+});
+
+manualPanel.addEventListener('click', (ev)=>{
+  const chip = ev.target.closest('.chip'); if(!chip) return;
+  applyColor(chip.dataset.key, chip.dataset.color);
+});
+
+manualPanel.addEventListener('input', (ev)=>{
+  const input = ev.target.closest('.num');
+  const colorPicker = ev.target.closest('.custom-color-input');
+  if(input){
+    const key=input.dataset.key, val=(input.value||'').trim();
+    if(!val){ numberByKey.delete(key); removeLabel(key); }
+    else { numberByKey.set(key,val); updateLabel(key); }
+  }
+  if(colorPicker){ applyColor(colorPicker.dataset.key, colorPicker.value); }
+});
+
+function applyColor(key, hex){
+  colorByKey.set(key, hex);
+  (layersByKey.get(key)||[]).forEach(ly=> setStyle(ly, {fillColor:hex}));
+  rebuildManualUI(); 
+}
+
+btnClear.addEventListener('click', ()=>{ colorByKey.clear(); repaintAll(); rebuildManualUI(); });
+
+/* ===== UI Generator com Guia Separada ===== */
+function rebuildManualUI(){
+  if(layersByKey.size===0){ manualPanel.innerHTML = '<span class="muted">Carregue KMLs para listar as malhas…</span>'; return; }
+  const rows=[];
+  for(const key of Array.from(layersByKey.keys()).sort()){
+    const name=escapeHtml(displayName.get(key)||key);
+    const currentColor = colorByKey.get(key);
+
+    const makeChips = (palette) => palette.map(p=>{
+      const sel = currentColor===p.hex ? ' is-selected' : '';
+      return `<div class="chip${sel}" title="${p.label}" data-key="${escapeHtml(key)}" data-color="${p.hex}" style="background:${p.hex}"></div>`;
+    }).join('');
+
+    const val = escapeHtml(numberByKey.get(key)||'');
+    const customHex = currentColor || '#ffffff';
+
+    rows.push(`
+      <div class="manual-row">
+        <div class="manual-header">
+           <div class="manual-name" title="${name}">${name}</div>
+           <input class="num" type="text" placeholder="#" value="${val}" data-key="${escapeHtml(key)}" />
+        </div>
+        
+        <div class="palette-container">
+          <div class="palette-label">Guia Especial</div>
+          <div class="palette">
+            ${makeChips(PALETTE_SPECIFIC)}
+            <input type="color" class="custom-color-input" title="Cor personalizada" data-key="${escapeHtml(key)}" value="${customHex}">
+          </div>
+        </div>
+
+        <div class="palette-container">
+          <div class="palette-label">Cores Padrão</div>
+          <div class="palette">
+            ${makeChips(PALETTE_STANDARD)}
+          </div>
+        </div>
+      </div>
+    `);
+  }
+  manualPanel.innerHTML = rows.join('');
+}
+
+function updateLabel(key){
+  const text=numberByKey.get(key); if(!text) return removeLabel(key);
+  let pos = labelPositionByKey.get(key) || getCenterForKey(key);
+  if(!pos) return;
+  const { url,w,h } = makeSvgLabelIcon(text);
+  const icon=L.icon({ iconUrl:url, iconSize:[w,h], iconAnchor:[w/2,h/2], className:'region-number-icon' });
+  let marker=labelByKey.get(key);
+  if(marker){ marker.setLatLng(pos); marker.setIcon(icon); } 
+  else {
+    marker = L.marker(pos, { icon, draggable:true, zIndexOffset:1000 });
+    marker.on('dragend', (e)=> labelPositionByKey.set(key, e.target.getLatLng()));
+    if(labelsVisible) marker.addTo(map);
+    labelByKey.set(key, marker);
+  }
+}
+
+function removeLabel(key){ const m=labelByKey.get(key); if(m) map.removeLayer(m); labelByKey.delete(key); }
+
+function getCenterForKey(key){
+  const list=layersByKey.get(key)||[]; if(!list.length) return null;
+  let bounds=null;
+  for(const ly of list){
+    let b=null; if(ly.getBounds) b=ly.getBounds(); else if(ly.getLatLng){ const ll=ly.getLatLng(); b=L.latLngBounds(ll,ll); }
+    if(!b) continue; bounds = bounds ? bounds.extend(b) : b;
+  }
+  return bounds ? bounds.getCenter() : null;
+}
+
+function makeSvgLabelIcon(text){
+  const t=String(text); const fs=numFontSize, pad=6;
+  const w=Math.max(32, Math.round(0.65*fs)*t.length + pad*2); const h=fs + pad*2;
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <style>text{font:700 ${fs}px ${numFontFamily}; fill:#fff; stroke:#000; stroke-width:4px; paint-order:stroke; stroke-linejoin:round; stroke-linecap:round;}</style>
+    <text x="${w/2}" y="${h-pad}" text-anchor="middle">${escapeHtml(t)}</text>
+  </svg>`;
+  return { url:'data:image/svg+xml;utf8,'+encodeURIComponent(svg), w, h };
+}
+
+function defaultStyle(){ return { color:'#000', weight:borderWeight, opacity:1, lineJoin:'round', fillOpacity:.15, fillColor:'#ffffff' }; }
+function setStyle(ly, s){
+  const final = { fillColor: s.fillColor || colorByKey.get(ly.feature?.properties?.__fileKey) || '#ffffff', color: '#000', weight: borderWeight, opacity: 1, fillOpacity: fillOpacityPct/100 };
+  if(ly.setStyle) ly.setStyle(final);
+}
+function repaintAll(){ layersByKey.forEach((list, key)=>{ list.forEach(ly => setStyle(ly, {})); if(numberByKey.has(key)) updateLabel(key); }); }
+
+btnExport.addEventListener('click', async ()=>{
+  try{
+    btnExport.disabled = true; expStatus.textContent = 'A gerar PNG…';
+    const toRestore = [];
+    if(labelsVisible){ labelByKey.forEach(m=>{ if(map.hasLayer(m)){ toRestore.push(m); map.removeLayer(m);} }); }
+    await waitTilesLoaded(4000);
+    window.leafletImage(map, (err, canvas)=>{
+      if(err){ alert('Erro ao exportar mapa.'); return; }
+      const bg = getComputedStyle(el('map')).backgroundColor || '#ffffff';
+      const out = document.createElement('canvas'); out.width = canvas.width; out.height = canvas.height;
+      const ctx = out.getContext('2d'); ctx.fillStyle = bg; ctx.fillRect(0,0,out.width,out.height); ctx.drawImage(canvas, 0, 0);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+      numberByKey.forEach((txt, key)=>{
+        const pos = labelPositionByKey.get(key) || getCenterForKey(key); if(!pos) return;
+        const pt = map.latLngToContainerPoint(pos);
+        ctx.font = `700 ${numFontSize}px ${numFontFamily}`; ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(2, numFontSize*0.15); ctx.fillStyle = '#fff';
+        ctx.strokeText(String(txt), pt.x, pt.y); ctx.fillText(String(txt), pt.x, pt.y);
+      });
+      const a=document.createElement('a'); a.href=out.toDataURL('image/png'); a.download='mapa_calor.png'; a.click();
+      toRestore.forEach(m=>m.addTo(map));
+    });
+  }finally{ btnExport.disabled = false; expStatus.textContent = ''; }
+});
+
+function registerLayer(k, ly){ if(!layersByKey.has(k)) layersByKey.set(k, []); layersByKey.get(k).push(ly); }
+function resetAll(){
+  kmlGroup.clearLayers(); boundsGroup.clearLayers();
+  layersByKey.clear(); displayName.clear(); colorByKey.clear();
+  numberByKey.clear(); labelPositionByKey.clear();
+  labelByKey.forEach(m=>map.removeLayer(m)); labelByKey.clear();
+  usedKeys.clear(); manualPanel.innerHTML='<span class="muted">Carregue KMLs para listar as malhas…</span>';
+}
+function canon(s){ return s.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+function uniqueKey(base){ let k=base, i=2; while(usedKeys.has(k)){ k=`${base} #${i++}` } usedKeys.add(k); return k; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m])); }
+function el(id){ return document.getElementById(id); }
+
+function waitTilesLoaded(timeout=4000){
+  const layers = []; map.eachLayer(l=>{ if(l instanceof L.TileLayer && map.hasLayer(l)) layers.push(l); });
+  if(!layers.length) return Promise.resolve();
+  return new Promise(res=>{
+    let pending=0, done=false;
+    const check=()=>{ if(done) return; if(layers.every(tl=>!tl._loading)) { done=true; res(); } };
+    layers.forEach(tl=>{ if(tl._loading){ pending++; tl.once('load', ()=> {pending--; if(pending<=0) check();}); } });
+    setTimeout(()=>{ if(!done) res(); }, timeout);
+    check();
+  });
+}
+</script>
+</body>
+</html>
